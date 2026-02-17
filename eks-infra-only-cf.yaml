@@ -12,7 +12,6 @@ Parameters:
     Description: Kubernetes Version
   AdminIAMArns:
     Type: CommaDelimitedList
-    Default: 'arn:aws:iam::682853212408:user/joshua.anantharajan@bi3technologies.com,arn:aws:iam::682853212408:user/joshansam.christopher@bi3technologies.com'
     Description: IAM ARNs for cluster admin access
 
 Resources:
