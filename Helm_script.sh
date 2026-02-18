@@ -26,10 +26,12 @@ EKS_CLUSTER_NAME="EksCluster"
 
 aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
 
+# Delete exisiting namespaces and resources if they exist
+kubectl delete ns strimzi strimzi-system cnpg-system ingress-nginx cert-manager eye4 --ignore-not-found
+
 # Create Namespace for Kubernetes Pods
 
-kubectl create ns strimzi
-kubectl create ns eye4 
+kubectl create ns strimzi eye4
 
 # Install Operators
 
@@ -39,13 +41,13 @@ helm install cnpg cnpg/cloudnative-pg --namespace cnpg-system --create-namespace
 
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx 
 helm repo update 
-helm install ingress-nginx ingress-nginx/ingress-nginx \
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx \
   --create-namespace 
 
 helm repo add strimzi https://strimzi.io/charts/ 
 helm repo update 
-helm install strimzi-operator oci://quay.io/strimzi-helm/strimzi-kafka-operator \
+helm upgrade --install strimzi-operator oci://quay.io/strimzi-helm/strimzi-kafka-operator \
   --version 0.40.0 \
   -n strimzi-system \
   --set 'watchNamespaces={strimzi}' \
@@ -53,7 +55,7 @@ helm install strimzi-operator oci://quay.io/strimzi-helm/strimzi-kafka-operator 
 
 helm repo add jetstack https://charts.jetstack.io 
 helm repo update 
-helm install cert-manager jetstack/cert-manager \
+helm upgrade --install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
   --version v1.14.4 \
@@ -112,6 +114,16 @@ aws cognito-idp create-user-pool-client \
 
 read -r -p "Enter the username for the Cognito user: " COGNITO_USERNAME
 read -r -p "Enter your email for the Cognito user: " COGNITO_EMAIL
+
+aws cognito-idp update-user-pool-client \
+  --user-pool-id "$COGNITO_POOL_ID" \
+  --client-id "$COGNITO_CLIENT_ID" \
+  --explicit-auth-flows ALLOW_CUSTOM_AUTH ALLOW_REFRESH_TOKEN_AUTH ALLOW_USER_PASSWORD_AUTH ALLOW_USER_SRP_AUTH \
+  --supported-identity-providers COGNITO \
+  --callback-urls "https://$DOMAIN_NAME/api/auth/callback/cognito" \
+  --allowed-o-auth-flows code implicit \
+  --allowed-o-auth-scopes openid email profile \
+  --allowed-o-auth-flows-user-pool-client
 
 # Sanitize inputs: remove CR/LF, trim surrounding whitespace.
 COGNITO_USERNAME=$(printf '%s' "$COGNITO_USERNAME" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
