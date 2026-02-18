@@ -86,24 +86,29 @@ read -p "Enter the EFS ID for Volume Mount: " EFS_ID
 read -p "Enter the domain name: " DOMAIN_NAME
 
 # AWS Cognito Registration 
+read -p "Enter Pool name for Cognito: " COGNITO_POOL_NAME
 
 aws cognito-idp create-user-pool \
-    --pool-name scripttest \
+    --pool-name "$COGNITO_POOL_NAME" \
     --policies '{"PasswordPolicy":{"MinimumLength":8,"RequireUppercase":true,"RequireLowercase":true,"RequireNumbers":true,"RequireSymbols":true}}' \
-    --auto-verified-attributes email
+    --auto-verified-attributes email \
+    --no-cli-pager
 
-COGNITO_POOL_ID=$(aws cognito-idp list-user-pools --max-results 10 --query "UserPools[?Name=='scripttest'].Id" --output text)
+COGNITO_POOL_ID=$(aws cognito-idp list-user-pools --max-results 10 --query "UserPools[?Name=='$COGNITO_POOL_NAME'].Id" --output text --no-cli-pager)
+
+read -p "Enter the Cognito client name: " COGNITO_CLIENT_NAME
 
 aws cognito-idp create-user-pool-client \
     --user-pool-id $COGNITO_POOL_ID \
-    --client-name scriptclient \
+    --client-name "$COGNITO_CLIENT_NAME" \
     --generate-secret \
     --callback-urls "https://$DOMAIN_NAME/api/auth/callback/cognito" \
     --logout-urls "https://$DOMAIN_NAME" \
     --default-redirect-uri "https://$DOMAIN_NAME/api/auth/callback/cognito" \
     --allowed-o-auth-flows "code" \
     --allowed-o-auth-scopes "email" "openid" "profile" \
-    --supported-identity-providers "COGNITO"
+    --supported-identity-providers "COGNITO" \
+    --no-cli-pager
 
 read -r -p "Enter the username for the Cognito user: " COGNITO_USERNAME
 read -r -p "Enter your email for the Cognito user: " COGNITO_EMAIL
@@ -128,10 +133,21 @@ aws cognito-idp admin-create-user \
 
 echo "Login into Cognito using the username and temporary password to set a new password for the user."
 
-echo "\n"
+echo 
 echo "Cognito email ID: $COGNITO_EMAIL"
 echo "Cognito Password: TempPass@123"
 
+read -p "Enter the domain prefix for Cognito: " DOMAIN_PREFIX
+
+aws cognito-idp create-user-pool-domain \
+    --user-pool-id "$COGNITO_POOL_ID" \
+    --domain "$DOMAIN_PREFIX"
+COGNITO_DOMAIN=$(aws cognito-idp describe-user-pool --user-pool-id "$COGNITO_POOL_ID" --query "UserPool.Domain" --output text --no-cli-pager)
+COGNITO_CLIENT_ID=$(aws cognito-idp list-user-pool-clients --user-pool-id "$COGNITO_POOL_ID" --query "UserPoolClients[?ClientName=='$COGNITO_CLIENT_NAME'].ClientId" --output text --no-cli-pager)
+COGNITO_CLIENT_SECRET=$(aws cognito-idp describe-user-pool-client --user-pool-id "$COGNITO_POOL_ID" --client-id "$COGNITO_CLIENT_ID" --query "UserPoolClient.ClientSecret" --output text --no-cli-pager)
+# demo.eye4.ai.auth.ap-southeast-2.amazoncognito.com
+
+NEXT_AUTH_SECRET=$(openssl rand -base64 32)
 
 helm install eye4-release oci://709825985650.dkr.ecr.us-east-1.amazonaws.com/bi3-technologies/eye4 \
   --version 0.3.0 \
@@ -139,9 +155,14 @@ helm install eye4-release oci://709825985650.dkr.ecr.us-east-1.amazonaws.com/bi3
   --set eye4-storage.s3.accountId=$AWS_ACCOUNT_ID \
   --set eye4-storage.s3.volumeHandle=$BUCKET_NAME \
   --set eye4-storage.efs.volumeHandle=$EFS_ID \
-  --set global.domain=$DOMAIN_NAME; echo "Eye4 Helm Chart deployed successfully!"
-
-
+  --set global.domain=$DOMAIN_NAME \
+  --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_CLIENT_ID="$COGNITO_CLIENT_ID" \
+  --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_POOL_ID="$COGNITO_POOL_ID" \
+  --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_REGION="$AWS_REGION" \
+  --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_DOMAIN="$COGNITO_DOMAIN" \
+  --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_CLIENT_SECRET="$COGNITO_CLIENT_SECRET" \
+  --set eye4-frontend.env.NEXT_PUBLIC_NEXT_AUTH_SECRET="$NEXT_AUTH_SECRET"; echo "Eye4 Helm Chart deployed successfully!"
+  
 pg_config="$(mktemp)"
 trap 'rm -f "$pg_config"' EXIT
 
