@@ -20,11 +20,13 @@ AWS_REGION=$(aws configure get region)
 echo "AWS Account ID: $AWS_ACCOUNT_ID"
 echo "AWS Region: $AWS_REGION"
 
+read -p "Enter the Admin ARN(Eg.arn:aws:iam::<ACCOUNT_ID>:user/<user-email>): " param
+
 # CloudFormation rendering 
 aws cloudformation create-stack \
  --stack-name  \
  --template-body https://raw.githubusercontent.com/JoshanSam-Bi3/eye4-cloudformation/refs/heads/main/eks-infra-only-cf.yaml \
- --parameters ParameterKey=AdminIAMArns,ParameterValue="" \
+ --parameters ParameterKey=AdminIAMArns,ParameterValue="$param" \
  --capabilities CAPABILITY_NAMED_IAM
 
 echo 
