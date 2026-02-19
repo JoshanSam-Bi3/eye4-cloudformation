@@ -20,8 +20,17 @@ AWS_REGION=$(aws configure get region)
 echo "AWS Account ID: $AWS_ACCOUNT_ID"
 echo "AWS Region: $AWS_REGION"
 
-# Kubectl Connection
+# CloudFormation rendering 
+aws cloudformation create-stack \
+ --stack-name  \
+ --template-body https://raw.githubusercontent.com/JoshanSam-Bi3/eye4-cloudformation/refs/heads/main/eks-infra-only-cf.yaml \
+ --parameters ParameterKey=AdminIAMArns,ParameterValue="" \
+ --capabilities CAPABILITY_NAMED_IAM
 
+echo 
+echo "Cloudformation template deployed successfully inside the AWS... 🎉"
+
+# Kubectl Connection
 EKS_CLUSTER_NAME="EksCluster"
 
 aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
@@ -30,11 +39,9 @@ aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
 kubectl delete ns strimzi strimzi-system cnpg-system ingress-nginx cert-manager eye4 --ignore-not-found
 
 # Create Namespace for Kubernetes Pods
-
 kubectl create ns strimzi eye4
 
 # Install Operators
-
 helm repo add cnpg https://cloudnative-pg.github.io/charts 
 helm repo update 
 helm install cnpg cnpg/cloudnative-pg --namespace cnpg-system --create-namespace --version 0.27.1 
@@ -80,7 +87,6 @@ kubectl apply -f "$secret"
 rm -f "$secret"
 
 # Login into AWS ECR Repo
-
 aws ecr get-login-password --region us-east-1 | helm registry login --username AWS --password-stdin 709825985650.dkr.ecr.us-east-1.amazonaws.com 
 
 read -p "Enter the S3 bucket name for Volume Mount: " BUCKET_NAME
@@ -130,6 +136,8 @@ COGNITO_USERNAME=$(printf '%s' "$COGNITO_USERNAME" | tr -d '\r\n' | sed 's/^[[:s
 # lower-case the email and trim
 COGNITO_EMAIL=$(printf '%s' "$COGNITO_EMAIL" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
 
+echo "Type username with required parameters (Eg. Joshan) -> No special chars or spaces"
+
 # Basic validation
 if [ -z "${COGNITO_USERNAME}" ] || [ -z "${COGNITO_EMAIL}" ]; then
   echo "ERROR: Cognito username and email must not be empty" >&2
@@ -145,7 +153,7 @@ aws cognito-idp admin-create-user \
 
 echo "Login into Cognito using the username and temporary password to set a new password for the user."
 
-echo 
+echo ""
 echo "Cognito email ID: $COGNITO_EMAIL"
 echo "Cognito Password: TempPass@123"
 
@@ -157,6 +165,7 @@ aws cognito-idp create-user-pool-domain \
 COGNITO_DOMAIN=$(aws cognito-idp describe-user-pool --user-pool-id "$COGNITO_POOL_ID" --query "UserPool.Domain" --output text --no-cli-pager)
 COGNITO_CLIENT_ID=$(aws cognito-idp list-user-pool-clients --user-pool-id "$COGNITO_POOL_ID" --query "UserPoolClients[?ClientName=='$COGNITO_CLIENT_NAME'].ClientId" --output text --no-cli-pager)
 COGNITO_CLIENT_SECRET=$(aws cognito-idp describe-user-pool-client --user-pool-id "$COGNITO_POOL_ID" --client-id "$COGNITO_CLIENT_ID" --query "UserPoolClient.ClientSecret" --output text --no-cli-pager)
+
 # demo.eye4.ai.auth.ap-southeast-2.amazoncognito.com
 
 NEXT_AUTH_SECRET=$(openssl rand -base64 32)
