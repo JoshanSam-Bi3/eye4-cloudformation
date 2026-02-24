@@ -10,8 +10,15 @@ Parameters:
     Type: String
     Default: '1.31'
     Description: Kubernetes Version
+  DeploymentID:
+    Type: String
+    Default: eye4-dev
+    Description: Unique identifier for this deployment (used in S3 bucket names)
+    AllowedPattern: '^[a-z0-9-]+$'
+    ConstraintDescription: Must contain only lowercase letters, numbers, and hyphens
   AdminIAMArns:
     Type: CommaDelimitedList
+    Default: 'arn:aws:iam::682853212408:user/joshua.anantharajan@bi3technologies.com,arn:aws:iam::682853212408:user/joshansam.christopher@bi3technologies.com,arn:aws:iam::682853212408:user/dharani.murugan@bi3technologies.com,arn:aws:iam::682853212408:user/kavibharathi.asokan@bi3technologies.com'
     Description: IAM ARNs for cluster admin access
 
 Resources:
@@ -591,7 +598,7 @@ Resources:
   S3TestBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 's3-fuse-test-${AWS::AccountId}'
+      BucketName: !Sub 's3-fuse-test-${DeploymentID}'
       VersioningConfiguration:
         Status: Enabled
       PublicAccessBlockConfiguration:
@@ -647,6 +654,55 @@ Resources:
             Resource:
               - !GetAtt S3TestBucket.Arn
               - !Sub '${S3TestBucket.Arn}/*'
+
+  # ============================================================
+  # S3 Bucket for CNPG Database Backups
+  # ============================================================
+  CnpgBackupBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'cnpg-backups-${DeploymentID}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldBackups
+            ExpirationInDays: 30
+            NoncurrentVersionExpirationInDays: 7
+            Status: Enabled
+      Tags:
+        - Key: Name
+          Value: cnpg-dev-backups
+
+  # Bucket Policy - Grant Node Role and EKS access
+  CnpgBackupBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CnpgBackupBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowNodeRoleAccess
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt EKSNodeRole.Arn
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !GetAtt CnpgBackupBucket.Arn
+              - !Sub '${CnpgBackupBucket.Arn}/*'
 
   # ============================================================
   # OIDC Provider (for IRSA - IAM Roles for Service Accounts)
@@ -741,6 +797,12 @@ Outputs:
     Value: !Ref S3TestBucket
     Export:
       Name: !Sub '${AWS::StackName}-S3Bucket'
+
+  CnpgBackupBucketName:
+    Description: S3 CNPG Backup Bucket Name
+    Value: !Ref CnpgBackupBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-CnpgBackupBucket'
 
   NodeGroupName:
     Description: EKS CPU Node Group Name
