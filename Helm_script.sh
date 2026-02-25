@@ -24,9 +24,10 @@ echo "AWS Region: $AWS_REGION"
 
 read -p "Enter stack Name to be created: " STACK_NAME
 
+read -p "Enter the Admin ARN(Eg.arn:aws:iam::<ACCOUNT_ID>:user/<user-email>): " ADMIN_ROLE_ARN
+
 DEPLOYMENT_ID=$(LC_ALL=C tr -dc a-z0-9 </dev/urandom | head -c 16 ; echo)
 
-read -p "Enter the Admin ARN(Eg.arn:aws:iam::<ACCOUNT_ID>:user/<user-email>): " ADMIN_ROLE_ARN
 
 aws cloudformation create-stack --stack-name eye4-infra-only-stack \
   --stack-name $STACK_NAME \
