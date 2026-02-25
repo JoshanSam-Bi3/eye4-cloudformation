@@ -26,11 +26,15 @@ read -p "Enter stack Name to be created: " STACK_NAME
 
 DEPLOYMENT_ID=$(LC_ALL=C tr -dc a-z0-9 </dev/urandom | head -c 16 ; echo)
 
+read -p "Enter the Admin ARN(Eg.arn:aws:iam::<ACCOUNT_ID>:user/<user-email>): " ADMIN_ROLE_ARN
+
 aws cloudformation create-stack --stack-name eye4-infra-only-stack \
   --stack-name $STACK_NAME \
   --template-body raw.githubusercontent.com/JoshanSam-Bi3/eye4-cloudformation/refs/heads/main/eks-infra-only-cf.yaml \
   --capabilities CAPABILITY_NAMED_IAM \
-  --parameters ParameterKey=DeploymentID,ParameterValue=$DEPLOYMENT_ID
+  --parameters \
+   ParameterKey=DeploymentID,ParameterValue=$DEPLOYMENT_ID \
+   ParameterKey=AdminIAMArns,ParameterValue=$ADMIN_ROLE_ARN
 
 EKS_CLUSTER_NAME="EksCluster"
 
