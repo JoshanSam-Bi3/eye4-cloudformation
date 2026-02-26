@@ -22,20 +22,17 @@ echo "AWS Region: $AWS_REGION"
 
 # Kubectl Connection
 
-read -p "Enter stack Name to be created: " STACK_NAME
+# read -p "Enter stack Name to be created: " STACK_NAME
 
 read -p "Enter the Admin ARN(Eg.arn:aws:iam::<ACCOUNT_ID>:user/<user-email>): " ADMIN_ROLE_ARN
 
-DEPLOYMENT_ID=$(LC_ALL=C tr -dc a-z0-9 </dev/urandom | head -c 16 ; echo)
+# DEPLOYMENT_ID=$(LC_ALL=C tr -dc a-z0-9 </dev/urandom | head -c 16 ; echo)
 
-
-aws cloudformation create-stack --stack-name eye4-infra-only-stack \
-  --stack-name $STACK_NAME \
-  --template-body raw.githubusercontent.com/JoshanSam-Bi3/eye4-cloudformation/refs/heads/main/eks-infra-only-cf.yaml \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --parameters \
-   ParameterKey=DeploymentID,ParameterValue=$DEPLOYMENT_ID \
-   ParameterKey=AdminIAMArns,ParameterValue=$ADMIN_ROLE_ARN
+# aws cloudformation create-stack --stack-name eye4-infra-only-stack \
+#   --stack-name $STACK_NAME \
+#   --template-body raw.githubusercontent.com/JoshanSam-Bi3/eye4-cloudformation/refs/heads/main/eks-infra-only-cf.yaml \
+#   --capabilities CAPABILITY_NAMED_IAM \
+#   --parameters ParameterKey=DeploymentID,ParameterValue=$DEPLOYMENT_ID
 
 EKS_CLUSTER_NAME="EksCluster"
 
@@ -147,6 +144,38 @@ aws cognito-idp admin-create-user \
     --temporary-password 'TempPass@123' \
     --message-action SUPPRESS
 
+# Create Cognito groups for RBAC (admin & allowed users)
+COGNITO_ALLOWED_GROUP="Eye4Users"
+COGNITO_ADMIN_GROUP="Eye4Admins"
+
+aws cognito-idp create-group \
+    --user-pool-id "$COGNITO_POOL_ID" \
+    --group-name "$COGNITO_ALLOWED_GROUP" \
+    --description "Allowed users for Eye4 portal" \
+    --no-cli-pager
+
+aws cognito-idp create-group \
+    --user-pool-id "$COGNITO_POOL_ID" \
+    --group-name "$COGNITO_ADMIN_GROUP" \
+    --description "Admin users for Eye4 portal" \
+    --no-cli-pager
+
+# Add the created user to both groups (admin user by default)
+aws cognito-idp admin-add-user-to-group \
+    --user-pool-id "$COGNITO_POOL_ID" \
+    --username "$COGNITO_USERNAME" \
+    --group-name "$COGNITO_ALLOWED_GROUP" \
+    --no-cli-pager
+
+aws cognito-idp admin-add-user-to-group \
+    --user-pool-id "$COGNITO_POOL_ID" \
+    --username "$COGNITO_USERNAME" \
+    --group-name "$COGNITO_ADMIN_GROUP" \
+    --no-cli-pager
+
+echo "Cognito groups created: $COGNITO_ALLOWED_GROUP, $COGNITO_ADMIN_GROUP"
+echo "User '$COGNITO_USERNAME' added to both groups."
+
 echo "Login into Cognito using the username and temporary password to set a new password for the user."
 
 echo 
@@ -158,15 +187,27 @@ read -p "Enter the domain prefix for Cognito: " DOMAIN_PREFIX
 aws cognito-idp create-user-pool-domain \
     --user-pool-id "$COGNITO_POOL_ID" \
     --domain "$DOMAIN_PREFIX"
-COGNITO_DOMAIN=$(aws cognito-idp describe-user-pool --user-pool-id "$COGNITO_POOL_ID" --query "UserPool.Domain" --output text --no-cli-pager)
+COGNITO_DOMAIN_PREFIX=$(aws cognito-idp describe-user-pool --user-pool-id "$COGNITO_POOL_ID" --query "UserPool.Domain" --output text --no-cli-pager)
+# Construct the full Cognito hosted UI domain (used by the frontend for OAuth token refresh)
+COGNITO_DOMAIN="${COGNITO_DOMAIN_PREFIX}.auth.${AWS_REGION}.amazoncognito.com"
 COGNITO_CLIENT_ID=$(aws cognito-idp list-user-pool-clients --user-pool-id "$COGNITO_POOL_ID" --query "UserPoolClients[?ClientName=='$COGNITO_CLIENT_NAME'].ClientId" --output text --no-cli-pager)
 COGNITO_CLIENT_SECRET=$(aws cognito-idp describe-user-pool-client --user-pool-id "$COGNITO_POOL_ID" --client-id "$COGNITO_CLIENT_ID" --query "UserPoolClient.ClientSecret" --output text --no-cli-pager)
-# demo.eye4.ai.auth.ap-southeast-2.amazoncognito.com
+
+echo "Cognito Domain: $COGNITO_DOMAIN"
+
+aws cognito-idp update-user-pool-client \
+    --user-pool-id "$COGNITO_POOL_ID" \
+    --client-id "$COGNITO_CLIENT_ID" \
+    --allowed-o-auth-flows "code" \
+    --allowed-o-auth-scopes "openid" "email" "profile" \
+    --allowed-o-auth-flows-user-pool-client \
+    --supported-identity-providers "COGNITO" \
+    --callback-urls "https://$DOMAIN_NAME/api/auth/callback/cognito" \
+    --logout-urls "https://$DOMAIN_NAME"
 
 NEXT_AUTH_SECRET=$(openssl rand -base64 32)
 
 helm install eye4-release oci://709825985650.dkr.ecr.us-east-1.amazonaws.com/bi3-technologies/eye4 \
-  --version 0.4.0 \
   --namespace eye4 \
   --set eye4-storage.s3.accountId=$AWS_ACCOUNT_ID \
   --set eye4-storage.s3.volumeHandle=$BUCKET_NAME \
@@ -179,7 +220,10 @@ helm install eye4-release oci://709825985650.dkr.ecr.us-east-1.amazonaws.com/bi3
   --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_REGION="$AWS_REGION" \
   --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_DOMAIN="$COGNITO_DOMAIN" \
   --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_CLIENT_SECRET="$COGNITO_CLIENT_SECRET" \
-  --set eye4-frontend.env.NEXTAUTH_SECRET="$NEXT_AUTH_SECRET"; echo "Eye4 Helm Chart deployed successfully!"
+  --set eye4-frontend.env.NEXTAUTH_SECRET="$NEXT_AUTH_SECRET" \
+  --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_ALLOWED_GROUP_NAME="$COGNITO_ALLOWED_GROUP" \
+  --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_ADMIN_GROUP_NAME="$COGNITO_ADMIN_GROUP" \
+  --set "eye4-webapi.cognitoUserPoolId=$COGNITO_POOL_ID"; echo "Eye4 Helm Chart deployed successfully!"
   
 pg_config="$(mktemp)"
 trap 'rm -f "$pg_config"' EXIT
