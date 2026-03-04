@@ -253,8 +253,9 @@ COGNITO_ADMIN_GROUP_NAME="admin"
 TEST_BUILD="false"
 TEST_USER_TYPE=""
 
-helm install eye4-release ./eye4 \
+helm install eye4-release oci://709825985650.dkr.ecr.us-east-1.amazonaws.com/bi3-technologies/eye4 \
   --namespace eye4 \
+  --version 1.0.0 \
   --set eye4-storage.s3.accountId=$AWS_ACCOUNT_ID \
   --set eye4-storage.s3.volumeHandle=$BUCKET_NAME \
   --set eye4-storage.efs.volumeHandle=$EFS_ID \
