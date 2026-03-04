@@ -248,7 +248,7 @@ PLAYBACK_PATH="/dummy/playback/path"
 DATABASE_URL="Host=pg-eks-rw.cnpg-postgresql.svc.cluster.local;Port=5432;Username=postgres;Password=admin@12345;Database=app"
 
 # Frontend environment defaults
-FASTAPI_URL="http://eye4-api-service:5243"
+FASTAPI_URL="http://eye4-api-service:5000"
 COGNITO_ADMIN_GROUP_NAME="admin"
 TEST_BUILD="false"
 TEST_USER_TYPE=""
