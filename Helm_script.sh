@@ -35,7 +35,7 @@ read -p "Enter the Admin ARN(Eg.arn:aws:iam::<ACCOUNT_ID>:user/<user-email>): " 
 
 # aws cloudformation create-stack --stack-name eye4-infra-only-stack \
 #   --stack-name $STACK_NAME \
-#   --template-body raw.githubusercontent.com/JoshanSam-Bi3/eye4-cloudformation/refs/heads/main/eks-infra-only-cf.yaml \
+#   --template-body $(curl -sL raw.githubusercontent.com/JoshanSam-Bi3/eye4-cloudformation/refs/heads/main/eks-infra-only-cf.yaml) \
 #   --capabilities CAPABILITY_NAMED_IAM \
 #   --parameters \
       # ParameterKey=DeploymentID,ParameterValue=$DEPLOYMENT_ID,
