@@ -1,13 +1,18 @@
-cat <<'EOF'
- m    m        ""#                  mmmmmm                  mm
- #    #  mmm     #    mmmmm         #      m   m   mmm     m"#
- #mmmm# #"  #    #    # # #         #mmmmm "m m"  #"  #   #" #
- #    # #""""    #    # # #         #       #m#   #""""  #mmm#m
- #    # "#mm"    "mm  # # #         #mmmmm  "#    "#mm"      #
-                                            m"
-                                           ""
-EOF
+echo -e "${CYAN}"
+cat <<'BANNER'
 
+  ███████╗██╗   ██╗███████╗██╗  ██╗    █████╗ ██╗
+  ██╔════╝╚██╗ ██╔╝██╔════╝██║  ██║   ██╔══██╗██║
+  █████╗   ╚████╔╝ █████╗  ███████║   ███████║██║
+  ██╔══╝    ╚██╔╝  ██╔══╝  ╚════██║   ██╔══██║██║
+  ███████╗   ██║   ███████╗     ██║   ██║  ██║██║
+  ╚══════╝   ╚═╝   ╚══════╝     ╚═╝   ╚═╝  ╚═╝╚═╝
+
+  Full Deployment Automation Script
+  CloudFormation → OIDC → Helm → Ingress → Port Forward
+
+BANNER
+echo -e "${NC}"
 # Get AWS Account Credentials and OIDC info
 
 aws configure 
@@ -32,7 +37,9 @@ read -p "Enter the Admin ARN(Eg.arn:aws:iam::<ACCOUNT_ID>:user/<user-email>): " 
 #   --stack-name $STACK_NAME \
 #   --template-body raw.githubusercontent.com/JoshanSam-Bi3/eye4-cloudformation/refs/heads/main/eks-infra-only-cf.yaml \
 #   --capabilities CAPABILITY_NAMED_IAM \
-#   --parameters ParameterKey=DeploymentID,ParameterValue=$DEPLOYMENT_ID
+#   --parameters \
+      # ParameterKey=DeploymentID,ParameterValue=$DEPLOYMENT_ID,
+      # ParameterKey=AdminIAMArns,ParameterValue=$ADMIN_ROLE_ARN
 
 EKS_CLUSTER_NAME="EksCluster"
 
@@ -145,12 +152,19 @@ aws cognito-idp admin-create-user \
     --message-action SUPPRESS
 
 # Create Cognito groups for RBAC (admin & allowed users)
-COGNITO_ALLOWED_GROUP="Eye4Users"
-COGNITO_ADMIN_GROUP="Eye4Admins"
+COGNITO_DEV_GROUP="dev"
+COGNITO_SUPPORT_GROUP="support"
+COGNITO_ADMIN_GROUP="admin"
 
 aws cognito-idp create-group \
     --user-pool-id "$COGNITO_POOL_ID" \
-    --group-name "$COGNITO_ALLOWED_GROUP" \
+    --group-name "$COGNITO_SUPPORT_GROUP" \
+    --description "Allowed users for Eye4 portal" \
+    --no-cli-pager
+
+aws cognito-idp create-group \
+    --user-pool-id "$COGNITO_POOL_ID" \
+    --group-name "$COGNITO_DEV_GROUP" \
     --description "Allowed users for Eye4 portal" \
     --no-cli-pager
 
@@ -164,12 +178,6 @@ aws cognito-idp create-group \
 aws cognito-idp admin-add-user-to-group \
     --user-pool-id "$COGNITO_POOL_ID" \
     --username "$COGNITO_USERNAME" \
-    --group-name "$COGNITO_ALLOWED_GROUP" \
-    --no-cli-pager
-
-aws cognito-idp admin-add-user-to-group \
-    --user-pool-id "$COGNITO_POOL_ID" \
-    --username "$COGNITO_USERNAME" \
     --group-name "$COGNITO_ADMIN_GROUP" \
     --no-cli-pager
 
@@ -180,6 +188,8 @@ echo "Login into Cognito using the username and temporary password to set a new 
 
 echo 
 echo "Cognito email ID: $COGNITO_EMAIL"
+echo
+echo "Cognito Username: $COGNITO_USERNAME"
 echo "Cognito Password: TempPass@123"
 
 read -p "Enter the domain prefix for Cognito: " DOMAIN_PREFIX
@@ -195,19 +205,31 @@ COGNITO_CLIENT_SECRET=$(aws cognito-idp describe-user-pool-client --user-pool-id
 
 echo "Cognito Domain: $COGNITO_DOMAIN"
 
-aws cognito-idp update-user-pool-client \
-    --user-pool-id "$COGNITO_POOL_ID" \
-    --client-id "$COGNITO_CLIENT_ID" \
-    --allowed-o-auth-flows "code" \
-    --allowed-o-auth-scopes "openid" "email" "profile" \
-    --allowed-o-auth-flows-user-pool-client \
-    --supported-identity-providers "COGNITO" \
-    --callback-urls "https://$DOMAIN_NAME/api/auth/callback/cognito" \
-    --logout-urls "https://$DOMAIN_NAME"
+# aws cognito-idp update-user-pool-client \
+#     --user-pool-id "$COGNITO_POOL_ID" \
+#     --client-id "$COGNITO_CLIENT_ID" \
+#     --allowed-o-auth-flows "code" \
+#     --allowed-o-auth-scopes "openid" "email" "profile" \
+#     --allowed-o-auth-flows-user-pool-client \
+#     --supported-identity-providers "COGNITO" \
+#     --callback-urls "https://$DOMAIN_NAME/api/auth/callback/cognito" \
+#     --logout-urls "https://$DOMAIN_NAME"
 
 NEXT_AUTH_SECRET=$(openssl rand -base64 32)
 
-helm install eye4-release oci://709825985650.dkr.ecr.us-east-1.amazonaws.com/bi3-technologies/eye4 \
+# Web-API environment defaults
+AWS_SECRET_NAME="psql-connectionstring"
+MONITORING_PATH="/dummy/monitor/path"
+PLAYBACK_PATH="/dummy/playback/path"
+DATABASE_URL="Host=pg-eks-rw.cnpg-postgresql.svc.cluster.local;Port=5432;Username=postgres;Password=admin@12345;Database=app"
+
+# Frontend environment defaults
+FASTAPI_URL="http://eye4-api-service:5243"
+COGNITO_ADMIN_GROUP_NAME="admin"
+TEST_BUILD="false"
+TEST_USER_TYPE=""
+
+helm install eye4-release ./eye4 \
   --namespace eye4 \
   --set eye4-storage.s3.accountId=$AWS_ACCOUNT_ID \
   --set eye4-storage.s3.volumeHandle=$BUCKET_NAME \
@@ -216,14 +238,22 @@ helm install eye4-release oci://709825985650.dkr.ecr.us-east-1.amazonaws.com/bi3
   --set cnpg-postgresql.postgresql.cluster.backup.barmanObjectStore.s3Bucket="$BACKUP_BUCKET_NAME" \
   --set cnpg-postgresql.postgresql.cluster.backup.barmanObjectStore.destinationPath="s3://${BACKUP_BUCKET_NAME}/eye4" \
   --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_CLIENT_ID="$COGNITO_CLIENT_ID" \
-  --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID="$COGNITO_POOL_ID" \
-  --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_REGION="$AWS_REGION" \
-  --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_DOMAIN="$COGNITO_DOMAIN" \
   --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_CLIENT_SECRET="$COGNITO_CLIENT_SECRET" \
+  --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_DOMAIN="$COGNITO_DOMAIN" \
+  --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_REGION="$AWS_REGION" \
+  --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID="$COGNITO_POOL_ID" \
   --set eye4-frontend.env.NEXTAUTH_SECRET="$NEXT_AUTH_SECRET" \
-  --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_ALLOWED_GROUP_NAME="$COGNITO_ALLOWED_GROUP" \
-  --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_ADMIN_GROUP_NAME="$COGNITO_ADMIN_GROUP" \
-  --set "eye4-webapi.cognitoUserPoolId=$COGNITO_POOL_ID"; echo "Eye4 Helm Chart deployed successfully!"
+  --set eye4-frontend.env.NEXT_PUBLIC_FASTAPI_URL="$FASTAPI_URL" \
+  --set eye4-frontend.env.NEXT_PUBLIC_COGNITO_ADMIN_GROUP_NAME="$COGNITO_ADMIN_GROUP_NAME" \
+  --set eye4-frontend.env.NEXT_PUBLIC_TEST_BUILD="$TEST_BUILD" \
+  --set eye4-frontend.env.NEXT_PUBLIC_TEST_USER_TYPE="$TEST_USER_TYPE" \
+  --set eye4-webapi.env.AWS_REGION="$AWS_REGION" \
+  --set eye4-webapi.env.AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY" \
+  --set eye4-webapi.env.AWS_SECRET_ACCESS_KEY="$AWS_SECRET_KEY" \
+  --set eye4-webapi.env.AWS_SECRET_NAME="$AWS_SECRET_NAME" \
+  --set eye4-webapi.env.MONITORING_PATH="$MONITORING_PATH" \
+  --set eye4-webapi.env.PLAYBACK_PATH="$PLAYBACK_PATH" \
+  --set eye4-webapi.env.DATABASE_URL="$DATABASE_URL"; echo "Eye4 Helm Chart deployed successfully!"
   
 pg_config="$(mktemp)"
 trap 'rm -f "$pg_config"' EXIT
