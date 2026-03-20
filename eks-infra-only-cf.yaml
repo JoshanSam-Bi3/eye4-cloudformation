@@ -436,15 +436,15 @@ Resources:
       PreserveOnDelete: false
 
   # Prometheus Node Exporter
-  # PrometheusNodeExporterAddon:
-  #   Type: AWS::EKS::Addon
-  #   DependsOn: EKSNodeGroup
-  #   Properties:
-  #     AddonName: prometheus-node-exporter
-  #     AddonVersion: v1.10.2-eksbuild.4
-  #     ClusterName: !Ref EKSCluster
-  #     ResolveConflicts: OVERWRITE
-  #     PreserveOnDelete: false
+  PrometheusNodeExporterAddon:
+    Type: AWS::EKS::Addon
+    DependsOn: EKSNodeGroup
+    Properties:
+      AddonName: prometheus-node-exporter
+      AddonVersion: v1.10.2-eksbuild.4
+      ClusterName: !Ref EKSCluster
+      ResolveConflicts: OVERWRITE
+      PreserveOnDelete: false
 
   # S3 CSI Driver
   S3CSIRole:
@@ -476,7 +476,9 @@ Resources:
 
   S3CSIAddon:
     Type: AWS::EKS::Addon
-    DependsOn: EKSNodeGroup
+    DependsOn:
+      - EKSNodeGroup
+      - GPUNodeGroup
     Properties:
       AddonName: aws-mountpoint-s3-csi-driver
       AddonVersion: v1.12.0-eksbuild.1
@@ -718,13 +720,13 @@ Resources:
         - sts.amazonaws.com
 
   # ============================================================
-  # Eye4 WebAPI IRSA Role - SecretsManager Access
+  # Eye4 WebAPI IRSA Role - SecretsManager And S3 Access
   # ============================================================
   Eye4WebApiIrsaRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: Eye4WebApiIrsaRole
-      Description: IRSA role for Eye4 WebAPI pod to access SecretsManager
+      Description: IRSA role for Eye4 WebAPI pod and Frontend pod to access SecretsManager and S3
       AssumeRolePolicyDocument:
         Fn::Sub:
           - |
@@ -739,13 +741,18 @@ Resources:
                 "Condition": {
                   "StringEquals": {
                     "${OIDCIssuer}:aud": "sts.amazonaws.com",
-                    "${OIDCIssuer}:sub": "system:serviceaccount:eye4:eye4-sa"
+                    "${OIDCIssuer}:sub": [
+                      "system:serviceaccount:eye4:eye4-sa",
+                      "system:serviceaccount:eye4:eye4-frontend-sa"
+                    ]
                   }
                 }
               }]
             }
           - OIDCProviderArn: !GetAtt OIDCProvider.Arn
             OIDCIssuer: !Select [1, !Split ['://', !GetAtt EKSCluster.OpenIdConnectIssuerUrl]]
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
       Policies:
         - PolicyName: Eye4SecretsManagerAccess
           PolicyDocument:
