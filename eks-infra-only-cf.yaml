@@ -436,15 +436,15 @@ Resources:
       PreserveOnDelete: false
 
   # Prometheus Node Exporter
-  PrometheusNodeExporterAddon:
-    Type: AWS::EKS::Addon
-    DependsOn: EKSNodeGroup
-    Properties:
-      AddonName: prometheus-node-exporter
-      AddonVersion: v1.10.2-eksbuild.4
-      ClusterName: !Ref EKSCluster
-      ResolveConflicts: OVERWRITE
-      PreserveOnDelete: false
+  # PrometheusNodeExporterAddon:
+  #   Type: AWS::EKS::Addon
+  #   DependsOn: EKSNodeGroup
+  #   Properties:
+  #     AddonName: prometheus-node-exporter
+  #     AddonVersion: v1.10.2-eksbuild.4
+  #     ClusterName: !Ref EKSCluster
+  #     ResolveConflicts: OVERWRITE
+  #     PreserveOnDelete: false
 
   # S3 CSI Driver
   S3CSIRole:
