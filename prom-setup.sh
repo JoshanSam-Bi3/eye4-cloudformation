@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ── Configuration ────────────────────────────────────────────────────────────
 EKS_CLUSTER_NAME="EksCluster"
-AWS_REGION="ap-southeast-2"
+AWS_REGION=$(aws configure get region)
 PROM_NAMESPACE="prometheus"
 PROM_SA_NAME="prometheus-server"
 RELEASE_NAME="eye4-prom"
