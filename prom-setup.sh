@@ -176,7 +176,7 @@ echo "  ✓ Monitoring stack deployed"
 echo "── Applying PodMonitors ──"
 
 pm_yaml=$(mktemp)
-cat > "$pm_yaml" <<EOF
+cat > "$pm_yaml" <<'EOF'
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:
