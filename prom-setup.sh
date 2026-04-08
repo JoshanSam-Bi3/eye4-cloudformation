@@ -10,6 +10,8 @@ RELEASE_NAME="eye4-prom"
 ROLE_NAME="Eye4-AMP"
 CHART_VERSION="82.1.1"   # Set desired version
 
+echo $AWS_REGION
+
 # ── Derived values ───────────────────────────────────────────────────────────
 echo "── Discovering AWS configuration ──"
 
